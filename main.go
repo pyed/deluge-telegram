@@ -109,13 +109,6 @@ func init() {
 		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
 		os.Exit(1)
 	}
-
-	// get a view
-	if err := view.Update(); err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
-		os.Exit(1)
-	}
-
 }
 
 // init Telegram
@@ -250,6 +243,12 @@ func main() {
 // takes an optional argument which is a query to match against trackers
 // to list only torrents that has a tracker that matchs.
 func list(ud tgbotapi.Update, tokens []string) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("list: %s"+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
 	buf := new(bytes.Buffer)
 	// if it gets a query, it will list torrents that has trackers that match the query
 	if len(tokens) != 0 {
@@ -287,6 +286,12 @@ func list(ud tgbotapi.Update, tokens []string) {
 
 // head will list the first 5 or n torrents
 func head(ud tgbotapi.Update, tokens []string) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("list: %s"+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
 	var (
 		n   = 5 // default to 5
 		err error
@@ -321,6 +326,12 @@ func head(ud tgbotapi.Update, tokens []string) {
 
 // tail will list the first 5 or n torrents
 func tail(ud tgbotapi.Update, tokens []string) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("list: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
 	var (
 		n   = 5 // default to 5
 		err error
@@ -351,6 +362,28 @@ func tail(ud tgbotapi.Update, tokens []string) {
 
 	send(buf.String(), ud.Message.Chat.ID, false)
 
+}
+
+// downs will send the names of torrents with status 'Downloading' or in queue to
+func downs(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("list: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if torrent.State == "Downloading" {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+
+	if buf.Len() == 0 {
+		send("No downloads", ud.Message.Chat.ID, false)
+		return
+	}
+	send(buf.String(), ud.Message.Chat.ID, false)
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
