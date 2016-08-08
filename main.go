@@ -1,16 +1,29 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
-	deluge "github.com/pyed/go-deluge"
+	deluge "go-deluge"
+
 	"gopkg.in/telegram-bot-api.v4"
 )
+
+type View struct {
+	Torrents []*deluge.Torrent
+}
+
+func (v *View) Update() (err error) {
+	v.Torrents, err = Client.GetTorrents()
+	return
+}
 
 var (
 	// flags
@@ -22,6 +35,9 @@ var (
 
 	// Deluge
 	Client *deluge.Deluge
+
+	// Deluge view
+	view = new(View)
 
 	// Telegram
 	Bot     *tgbotapi.BotAPI
@@ -77,16 +93,19 @@ func init() {
 		log.SetOutput(logf)
 	}
 	// log the flags
-	log.Printf("[INFO] Token=%s\n\tMaster=%s\n\tURL=%s\n\tPASS=%s",
+	log.Printf(`[INFO] Token  = %s
+			   Master = %s
+			   URL    = %s
+		   	   PASS   = %s`,
 		BotToken, Master, DelugeURL, Password)
 }
 
 // init deluge
 func init() {
 	var err error
-	Client, err = deluge.New(DelugeURL, Password)
+	Client, err = deluge.New(DelugeURL+"/json", Password)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s", err)
+		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -96,7 +115,7 @@ func init() {
 	var err error
 	Bot, err = tgbotapi.NewBotAPI(BotToken)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s", err)
+		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
 		os.Exit(1)
 	}
 	log.Printf("[INFO] Authorized: %s", Bot.Self.UserName)
@@ -106,7 +125,7 @@ func init() {
 
 	Updates, err = Bot.GetUpdatesChan(u)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s", err)
+		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -129,8 +148,8 @@ func main() {
 		command := strings.ToLower(tokens[0])
 
 		switch command {
-		// case "list", "/list", "li", "/li":
-		// 	go list(update, tokens[1:])
+		case "list", "/list", "li", "/li":
+			go list(update, tokens[1:])
 
 		// case "head", "/head", "he", "/he":
 		// 	go head(update, tokens[1:])
@@ -214,4 +233,95 @@ func main() {
 
 		}
 	}
+}
+
+// list will form and send a list of all the torrents
+// takes an optional argument which is a query to match against trackers
+// to list only torrents that has a tracker that matchs.
+func list(ud tgbotapi.Update, tokens []string) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("list: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	// if it gets a query, it will list torrents that has trackers that match the query
+	if len(tokens) != 0 {
+		// (?i) for case insensitivity
+		regx, err := regexp.Compile("(?i)" + tokens[0])
+		if err != nil {
+			log.Printf("[ERROR] Regexp: %s", err)
+			send("list: "+err.Error(), ud.Message.Chat.ID, false)
+			return
+		}
+
+		for _, torrent := range view.Torrents {
+			if regx.MatchString(torrent.TrackerHost) {
+				buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+			}
+		}
+	} else { // if we did not get a query, list all torrents
+		for _, torrent := range view.Torrents {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+
+	if buf.Len() == 0 {
+		if len(tokens) != 0 { // if we got a tracker query show different message
+			send(fmt.Sprintf("list: No tracker matches: *%s*", tokens[0]),
+				ud.Message.Chat.ID, true)
+			return
+		}
+		send("list: No torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+}
+
+// send takes a chat id and a message to send, returns the message id of the send message
+func send(text string, chatID int64, markdown bool) int {
+	// set typing action
+	action := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	Bot.Send(action)
+
+	// check the rune count, telegram is limited to 4096 chars per message;
+	// so if our message is > 4096, split it in chunks the send them.
+	msgRuneCount := utf8.RuneCountInString(text)
+LenCheck:
+	stop := 4095
+	if msgRuneCount > 4096 {
+		for text[stop] != 10 { // '\n'
+			stop--
+		}
+		msg := tgbotapi.NewMessage(chatID, text[:stop])
+		msg.DisableWebPagePreview = true
+		if markdown {
+			msg.ParseMode = tgbotapi.ModeMarkdown
+		}
+
+		// send current chunk
+		if _, err := Bot.Send(msg); err != nil {
+			log.Printf("[ERROR] Send: %s", err)
+		}
+		// move to the next chunk
+		text = text[stop:]
+		msgRuneCount = utf8.RuneCountInString(text)
+		goto LenCheck
+	}
+
+	// if msgRuneCount < 4096, send it normally
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.DisableWebPagePreview = true
+	if markdown {
+		msg.ParseMode = tgbotapi.ModeMarkdown
+	}
+
+	resp, err := Bot.Send(msg)
+	if err != nil {
+		log.Printf("[ERROR] Send: %s", err)
+	}
+
+	return resp.MessageID
 }
