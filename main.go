@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -108,6 +109,13 @@ func init() {
 		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
 		os.Exit(1)
 	}
+
+	// get a view
+	if err := view.Update(); err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
+		os.Exit(1)
+	}
+
 }
 
 // init Telegram
@@ -148,14 +156,17 @@ func main() {
 		command := strings.ToLower(tokens[0])
 
 		switch command {
+		case "update", "/update", "ud", "/ud":
+			view.Update()
+
 		case "list", "/list", "li", "/li":
 			go list(update, tokens[1:])
 
-		// case "head", "/head", "he", "/he":
-		// 	go head(update, tokens[1:])
+		case "head", "/head", "he", "/he":
+			go head(update, tokens[1:])
 
-		// case "tail", "/tail", "ta", "/ta":
-		// 	go tail(update, tokens[1:])
+		case "tail", "/tail", "ta", "/ta":
+			go tail(update, tokens[1:])
 
 		// case "downs", "/downs", "dl", "/dl":
 		// 	go downs(update)
@@ -229,7 +240,7 @@ func main() {
 
 		default:
 			// no such command, try help
-			// go send("no such command, try /help", update.Message.Chat.ID, false)
+			go send("no such command, try /help", update.Message.Chat.ID, false)
 
 		}
 	}
@@ -239,12 +250,6 @@ func main() {
 // takes an optional argument which is a query to match against trackers
 // to list only torrents that has a tracker that matchs.
 func list(ud tgbotapi.Update, tokens []string) {
-	if err := view.Update(); err != nil {
-		log.Printf("[ERROR] Deluge: %s", err)
-		send("list: "+err.Error(), ud.Message.Chat.ID, false)
-		return
-	}
-
 	buf := new(bytes.Buffer)
 	// if it gets a query, it will list torrents that has trackers that match the query
 	if len(tokens) != 0 {
@@ -278,6 +283,74 @@ func list(ud tgbotapi.Update, tokens []string) {
 	}
 
 	send(buf.String(), ud.Message.Chat.ID, false)
+}
+
+// head will list the first 5 or n torrents
+func head(ud tgbotapi.Update, tokens []string) {
+	var (
+		n   = 5 // default to 5
+		err error
+	)
+
+	if len(tokens) > 0 {
+		n, err = strconv.Atoi(tokens[0])
+		if err != nil {
+			send("head: argument must be a number", ud.Message.Chat.ID, false)
+			return
+		}
+	}
+
+	// make sure that we stay in the boundaries
+	if n <= 0 || n > len(view.Torrents) {
+		n = len(view.Torrents)
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents[:n] {
+		buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+	}
+
+	if buf.Len() == 0 {
+		send("head: No torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
+}
+
+// tail will list the first 5 or n torrents
+func tail(ud tgbotapi.Update, tokens []string) {
+	var (
+		n   = 5 // default to 5
+		err error
+	)
+
+	if len(tokens) > 0 {
+		n, err = strconv.Atoi(tokens[0])
+		if err != nil {
+			send("tail: argument must be a number", ud.Message.Chat.ID, false)
+			return
+		}
+	}
+
+	// make sure that we stay in the boundaries
+	if n <= 0 || n > len(view.Torrents) {
+		n = len(view.Torrents)
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents[len(view.Torrents)-n:] {
+		buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+	}
+
+	if buf.Len() == 0 {
+		send("tail: No torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
