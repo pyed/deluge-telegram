@@ -168,11 +168,11 @@ func main() {
 		case "seeding", "/seeding", "sd", "/sd":
 			go seeding(update)
 
-		// case "paused", "/paused", "pa", "/pa":
-		// 	go paused(update)
+		case "paused", "/paused", "pa", "/pa":
+			go paused(update)
 
-		// case "checking", "/checking", "ch", "/ch":
-		// 	go checking(update)
+		case "checking", "/checking", "ch", "/ch":
+			go checking(update)
 
 		// case "active", "/active", "ac", "/ac":
 		// 	go active(update)
@@ -404,6 +404,54 @@ func seeding(ud tgbotapi.Update) {
 
 	if buf.Len() == 0 {
 		send("No torrents seeding", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
+}
+
+// paused will send the names of the torrents with the status 'Seeding'
+func paused(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("paused: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if torrent.State == "Paused" {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+
+	if buf.Len() == 0 {
+		send("No torrents paused", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
+}
+
+// checking will send the names of the torrents with the status 'Seeding'
+func checking(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("checking: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if torrent.State == "Checking" {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+
+	if buf.Len() == 0 {
+		send("No torrents checking", ud.Message.Chat.ID, false)
 		return
 	}
 
