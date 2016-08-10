@@ -18,7 +18,7 @@ import (
 )
 
 type View struct {
-	Torrents []*deluge.Torrent
+	Torrents deluge.Torrents
 }
 
 func (v *View) Update() (err error) {
@@ -189,11 +189,11 @@ func main() {
 		case "add", "/add", "ad", "/ad":
 			go add(update, tokens[1:])
 
-		// case "search", "/search", "se", "/se":
-		// 	go search(update, tokens[1:])
+		case "search", "/search", "se", "/se":
+			go search(update, tokens[1:])
 
-		// case "latest", "/latest", "la", "/la":
-		// 	go latest(update, tokens[1:])
+		case "latest", "/latest", "la", "/la":
+			go latest(update, tokens[1:])
 
 		// case "info", "/info", "in", "/in":
 		// 	go info(update, tokens[1:])
@@ -591,6 +591,80 @@ func receiveTorrent(ud tgbotapi.Update) {
 
 	// add by file URL
 	add(ud, []string{file.Link(BotToken)})
+}
+
+// search takes a query and returns torrents with match
+func search(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got a query
+	if len(tokens) == 0 {
+		send("search: needs an argument", ud.Message.Chat.ID, false)
+		return
+	}
+
+	query := strings.Join(tokens, " ")
+	// "(?i)" for case insensitivity
+	regx, err := regexp.Compile("(?i)" + query)
+	if err != nil {
+		send("search: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("search: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if regx.MatchString(torrent.Name) {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+	if buf.Len() == 0 {
+		send("No matches!", ud.Message.Chat.ID, false)
+		return
+	}
+	send(buf.String(), ud.Message.Chat.ID, false)
+}
+
+// latest takes n and returns the latest n torrents
+func latest(ud tgbotapi.Update, tokens []string) {
+	var (
+		n   = 5 // default to 5
+		err error
+	)
+
+	if len(tokens) > 0 {
+		n, err = strconv.Atoi(tokens[0])
+		if err != nil {
+			send("latest: argument must be a number", ud.Message.Chat.ID, false)
+			return
+		}
+	}
+
+	if err := view.Update(); err != nil {
+		log.Print("[ERROR] Deluge: %s", err)
+		send("latest: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+	// make sure that we stay in the boundaries
+	if n <= 0 || n > len(view.Torrents) {
+		n = len(view.Torrents)
+	}
+
+	// sort by age, and set reverse to true to get the latest first
+	view.Torrents.SortAge(true)
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents[:n] {
+		buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+	}
+	if buf.Len() == 0 {
+		send("latest: No torrents", ud.Message.Chat.ID, false)
+		return
+	}
+	send(buf.String(), ud.Message.Chat.ID, false)
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
