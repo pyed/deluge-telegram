@@ -174,20 +174,20 @@ func main() {
 		case "checking", "/checking", "ch", "/ch":
 			go checking(update)
 
-		// case "active", "/active", "ac", "/ac":
-		// 	go active(update)
+		case "active", "/active", "ac", "/ac":
+			go active(update)
 
-		// case "errors", "/errors", "er", "/er":
-		// 	go errors(update)
+		case "errors", "/errors", "er", "/er":
+			go errors(update)
 
 		// case "sort", "/sort", "so", "/so":
 		// 	go sort(update, tokens[1:])
 
-		// case "trackers", "/trackers", "tr", "/tr":
-		// 	go trackers(update)
+		case "trackers", "/trackers", "tr", "/tr":
+			go trackers(update)
 
-		// case "add", "/add", "ad", "/ad":
-		// 	go add(update, tokens[1:])
+		case "add", "/add", "ad", "/ad":
+			go add(update, tokens[1:])
 
 		// case "search", "/search", "se", "/se":
 		// 	go search(update, tokens[1:])
@@ -228,9 +228,9 @@ func main() {
 		// case "version", "/version":
 		// 	go version(update)
 
-		// case "":
-		// 	// might be a file received
-		// 	go receiveTorrent(update)
+		case "":
+			// might be a file received
+			go receiveTorrent(update)
 
 		default:
 			// no such command, try help
@@ -427,7 +427,7 @@ func paused(ud tgbotapi.Update) {
 	}
 
 	if buf.Len() == 0 {
-		send("No torrents paused", ud.Message.Chat.ID, false)
+		send("No paused torrents", ud.Message.Chat.ID, false)
 		return
 	}
 
@@ -457,6 +457,140 @@ func checking(ud tgbotapi.Update) {
 
 	send(buf.String(), ud.Message.Chat.ID, false)
 
+}
+
+// active will send the names of the torrents with the status 'Seeding'
+func active(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("active: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if torrent.DownloadPayloadRate > 0 ||
+			torrent.UploadPayloadRate > 0 {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+		}
+	}
+
+	if buf.Len() == 0 {
+		send("No active torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
+}
+
+// errors will send the names of the torrents with the status 'Seeding'
+func errors(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("errors: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	for _, torrent := range view.Torrents {
+		if !strings.Contains(torrent.TrackerStatus, "Announce OK") {
+			buf.WriteString(fmt.Sprintf("<%d> %s\n%s\n", torrent.ID, torrent.Name, torrent.TrackerStatus))
+		}
+	}
+
+	if buf.Len() == 0 {
+		send("No errors torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, false)
+
+}
+
+// trackers will send a list of trackers and how many torrents each one has
+func trackers(ud tgbotapi.Update) {
+	if err := view.Update(); err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("trackers: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	trackers := make(map[string]int)
+
+	for _, torrent := range view.Torrents {
+		if _, ok := trackers[torrent.TrackerHost]; !ok {
+			trackers[torrent.TrackerHost] = 1
+			continue
+		}
+		trackers[torrent.TrackerHost]++
+	}
+
+	buf := new(bytes.Buffer)
+	for k, v := range trackers {
+		buf.WriteString(fmt.Sprintf("%d - %s\n", v, k))
+	}
+
+	if buf.Len() == 0 {
+		send("No trackers!", ud.Message.Chat.ID, false)
+		return
+	}
+	send(buf.String(), ud.Message.Chat.ID, false)
+}
+
+// add takes an URL to a .torrent file to add it to transmission
+func add(ud tgbotapi.Update, tokens []string) {
+	if len(tokens) == 0 {
+		send("add: needs atleast one URL", ud.Message.Chat.ID, false)
+		return
+	}
+
+	var hash string
+	var err error
+	// loop over the URL/s and add them
+	for _, url := range tokens {
+		if strings.HasPrefix(url, "magnet") {
+			hash, err = Client.AddTorrentMagnet(url)
+		} else { // not a magnet
+			hash, err = Client.AddTorrentUrl(url)
+		}
+
+		if err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			send(err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		torrent, err := Client.GetTorrent(hash)
+
+		if err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			send("add: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send(fmt.Sprintf("Added: %s", torrent.Name), ud.Message.Chat.ID, false)
+	}
+}
+
+// receiveTorrent gets an update that potentially has a .torrent file to add
+func receiveTorrent(ud tgbotapi.Update) {
+	if ud.Message.Document.FileID == "" {
+		return // has no document
+	}
+
+	// get the file ID and make the config
+	fconfig := tgbotapi.FileConfig{
+		FileID: ud.Message.Document.FileID,
+	}
+	file, err := Bot.GetFile(fconfig)
+	if err != nil {
+		send("receiver: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	// add by file URL
+	add(ud, []string{file.Link(BotToken)})
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
