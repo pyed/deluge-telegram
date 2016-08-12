@@ -202,9 +202,6 @@ func main() {
 		// case "sort", "/sort", "so", "/so":
 		// 	go sort(update, tokens[1:])
 
-		case "trackers", "/trackers", "tr", "/tr":
-			go trackers(update)
-
 		case "add", "/add", "ad", "/ad":
 			go add(update, tokens[1:])
 
@@ -229,8 +226,8 @@ func main() {
 		case "speed", "/speed", "ss", "/ss":
 			go speed(update)
 
-		// case "count", "/count", "co", "/co":
-		// 	go count(update)
+		case "count", "/count", "co", "/co":
+			go count(update)
 
 		// case "del", "/del":
 		// 	go del(update, tokens[1:])
@@ -522,36 +519,6 @@ func errors(ud tgbotapi.Update) {
 
 	send(buf.String(), ud.Message.Chat.ID, false)
 
-}
-
-// trackers will send a list of trackers and how many torrents each one has
-func trackers(ud tgbotapi.Update) {
-	if err := view.Update(); err != nil {
-		log.Printf("[ERROR] Deluge: %s", err)
-		send("trackers: "+err.Error(), ud.Message.Chat.ID, false)
-		return
-	}
-
-	trackers := make(map[string]int)
-
-	for _, torrent := range view.Torrents {
-		if _, ok := trackers[torrent.TrackerHost]; !ok {
-			trackers[torrent.TrackerHost] = 1
-			continue
-		}
-		trackers[torrent.TrackerHost]++
-	}
-
-	buf := new(bytes.Buffer)
-	for k, v := range trackers {
-		buf.WriteString(fmt.Sprintf("%d - %s\n", v, k))
-	}
-
-	if buf.Len() == 0 {
-		send("No trackers!", ud.Message.Chat.ID, false)
-		return
-	}
-	send(buf.String(), ud.Message.Chat.ID, false)
 }
 
 // add takes an URL to a .torrent file to add it to transmission
@@ -904,6 +871,29 @@ func speed(ud tgbotapi.Update) {
 	// after the 10th iteration, show dashes to indicate that we are done updating.
 	editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, "↓ - B  ↑ - B")
 	Bot.Send(editConf)
+}
+
+// count returns states with torrents count
+func count(ud tgbotapi.Update) {
+	state, trackers, err := Client.FilterTree()
+	if err != nil {
+		log.Print("[ERROR] Deluge: %s", err)
+		send("count: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	buf.WriteString("*State*\n")
+	for _, s := range state {
+		buf.WriteString(fmt.Sprintf("%s: %v\n", s[0], s[1]))
+	}
+
+	buf.WriteString("\n*Trackers*\n")
+	for _, t := range trackers {
+		buf.WriteString(fmt.Sprintf("%s: %v\n", t[0], t[1]))
+	}
+
+	send(buf.String(), ud.Message.Chat.ID, true)
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
