@@ -209,11 +209,11 @@ func main() {
 		case "info", "/info", "in", "/in":
 			go info(update, tokens[1:])
 
-		// case "stop", "/stop", "sp", "/sp":
-		// 	go stop(update, tokens[1:])
+		case "stop", "/stop", "sp", "/sp":
+			go stop(update, tokens[1:])
 
-		// case "start", "/start", "st", "/st":
-		// 	go start(update, tokens[1:])
+		case "start", "/start", "st", "/st":
+			go start(update, tokens[1:])
 
 		// case "check", "/check", "ck", "/ck":
 		// 	go check(update, tokens[1:])
@@ -761,6 +761,89 @@ func info(ud tgbotapi.Update, tokens []string) {
 			editConf.ParseMode = tgbotapi.ModeMarkdown
 			Bot.Send(editConf)
 		}(torrentName, torrentID, msgID)
+	}
+}
+
+// stop takes id[s] of torrent[s] or 'all' to stop them
+func stop(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got at least one argument
+	if len(tokens) == 0 {
+		send("stop: needs an argument", ud.Message.Chat.ID, false)
+		return
+	}
+
+	// if the first argument is 'all' then stop all torrents
+	if tokens[0] == "all" {
+		if err := Client.PauseAll(); err != nil {
+			send("stop: error occurred while stopping torrents", ud.Message.Chat.ID, false)
+			return
+		}
+		send("stopped all torrents", ud.Message.Chat.ID, false)
+		return
+	}
+
+	for _, id := range tokens {
+		num, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("stop: %s is not a number", id), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		torrent, err := view.GetTorrentByID(num)
+		if err != nil {
+			send("stop: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		if err := Client.PauseTorrent(torrent.Hash); err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			send("stop: an error occurred while stopping: "+torrent.Name, ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send(fmt.Sprintf("Stopped: %s", torrent.Name), ud.Message.Chat.ID, false)
+	}
+}
+
+// start takes id[s] of torrent[s] or 'all' to start them
+func start(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got at least one argument
+	if len(tokens) == 0 {
+		send("start: needs an argument", ud.Message.Chat.ID, false)
+		return
+	}
+
+	// if the first argument is 'all' then start all torrents
+	if tokens[0] == "all" {
+		if err := Client.StartAll(); err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			send("start: error occurred while starting some torrents", ud.Message.Chat.ID, false)
+			return
+		}
+		send("started all torrents", ud.Message.Chat.ID, false)
+		return
+
+	}
+
+	for _, id := range tokens {
+		num, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("start: %s is not a number", id), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		torrent, err := view.GetTorrentByID(num)
+		if err != nil {
+			send("start: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		if err := Client.StartTorrent(torrent.Hash); err != nil {
+			send("stop: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send(fmt.Sprintf("Started: %s", torrent.Name), ud.Message.Chat.ID, false)
 	}
 }
 
