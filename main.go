@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	humanize "github.com/dustin/go-humanize"
+
 	deluge "go-deluge"
 
 	"gopkg.in/telegram-bot-api.v4"
@@ -24,6 +26,15 @@ type View struct {
 func (v *View) Update() (err error) {
 	v.Torrents, err = Client.GetTorrents()
 	return
+}
+
+func (v *View) GetTorrentByID(id int) (*deluge.Torrent, error) {
+	for _, torrent := range v.Torrents {
+		if torrent.ID == id {
+			return torrent, nil
+		}
+	}
+	return nil, fmt.Errorf("Can't find a torrent with ID: %s", id)
 }
 
 var (
@@ -195,8 +206,8 @@ func main() {
 		case "latest", "/latest", "la", "/la":
 			go latest(update, tokens[1:])
 
-		// case "info", "/info", "in", "/in":
-		// 	go info(update, tokens[1:])
+		case "info", "/info", "in", "/in":
+			go info(update, tokens[1:])
 
 		// case "stop", "/stop", "sp", "/sp":
 		// 	go stop(update, tokens[1:])
@@ -665,6 +676,92 @@ func latest(ud tgbotapi.Update, tokens []string) {
 		return
 	}
 	send(buf.String(), ud.Message.Chat.ID, false)
+}
+
+// info takes an id of a torrent and returns some info about it
+func info(ud tgbotapi.Update, tokens []string) {
+	if len(tokens) == 0 {
+		send("info: needs a torrent ID number", ud.Message.Chat.ID, false)
+		return
+	}
+
+	// if there's no view, get one
+	if view.Torrents == nil {
+		if err := view.Update(); err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			send("info: "+err.Error(), ud.Message.Chat.ID, false)
+			return
+		}
+	}
+
+	for _, id := range tokens {
+		torrentID, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("info: %s is not a number", id), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		torrent, err := view.GetTorrentByID(torrentID)
+		if err != nil {
+			send(fmt.Sprintf("info: Can't find a torrent with an ID of %d", torrentID), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		// get an updated view of that torrent
+		torrent, err = Client.GetTorrent(torrent.Hash)
+		if err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			send("info: Deluge error while getting: "+torrent.Name, ud.Message.Chat.ID, false)
+			continue
+		}
+
+		// format the info
+		torrentName := mdReplacer.Replace(torrent.Name) // escape markdown
+		info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *%d*\nTracker: `%s`",
+			torrentID, torrentName, torrent.State, torrent.Progress,
+			humanize.Bytes(uint64(torrent.DownloadPayloadRate)), humanize.Bytes(uint64(torrent.UploadPayloadRate)),
+			humanize.Bytes(uint64(torrent.TotalPayloadDownload)), humanize.Bytes(uint64(torrent.TotalPayloadUpload)),
+			torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.Eta, torrent.TrackerHost)
+
+		// send it
+		msgID := send(info, ud.Message.Chat.ID, true)
+
+		// this go-routine will make the info live for 'duration * interval'
+		// takes torrent name so we don't have to use mdReplacer
+		go func(torrentName string, torrentID, msgID int) {
+			for i := 0; i < duration; i++ {
+				time.Sleep(time.Second * interval)
+
+				torrent, err = Client.GetTorrent(torrent.Hash)
+				if err != nil {
+					log.Printf("[ERROR] Deluge: %s", err)
+					continue // skip this iteration if there's an error retrieving the torrent's info
+				}
+
+				info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *%d*\nTracker: `%s`",
+					torrentID, torrentName, torrent.State, torrent.Progress,
+					humanize.Bytes(uint64(torrent.DownloadPayloadRate)), humanize.Bytes(uint64(torrent.UploadPayloadRate)),
+					humanize.Bytes(uint64(torrent.TotalPayloadDownload)), humanize.Bytes(uint64(torrent.TotalPayloadUpload)),
+					torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.Eta, torrent.TrackerHost)
+
+				// update the message
+				editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
+				editConf.ParseMode = tgbotapi.ModeMarkdown
+				Bot.Send(editConf)
+
+			}
+
+			// at the end write dashes to indicate that we are done being live.
+			info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *-*  ↑ *-* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *-*\nTracker: `%s`",
+				torrentID, torrentName, torrent.State, torrent.Progress, humanize.Bytes(uint64(torrent.TotalPayloadDownload)),
+				humanize.Bytes(uint64(torrent.TotalPayloadUpload)), torrent.Ratio,
+				time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.TrackerHost)
+
+			editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
+			editConf.ParseMode = tgbotapi.ModeMarkdown
+			Bot.Send(editConf)
+		}(torrentName, torrentID, msgID)
+	}
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
