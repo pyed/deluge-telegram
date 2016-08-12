@@ -29,12 +29,20 @@ func (v *View) Update() (err error) {
 }
 
 func (v *View) GetTorrentByID(id int) (*deluge.Torrent, error) {
+	// if there's no view, get one
+	if view.Torrents == nil {
+		if err := view.Update(); err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			return nil, err
+		}
+	}
+
 	for _, torrent := range v.Torrents {
 		if torrent.ID == id {
 			return torrent, nil
 		}
 	}
-	return nil, fmt.Errorf("Can't find a torrent with ID: %s", id)
+	return nil, fmt.Errorf("Can't find a torrent with ID: %d", id)
 }
 
 var (
@@ -215,8 +223,8 @@ func main() {
 		case "start", "/start", "st", "/st":
 			go start(update, tokens[1:])
 
-		// case "check", "/check", "ck", "/ck":
-		// 	go check(update, tokens[1:])
+		case "check", "/check", "ck", "/ck":
+			go check(update, tokens[1:])
 
 		// case "stats", "/stats", "sa", "/sa":
 		// 	go stats(update)
@@ -685,15 +693,6 @@ func info(ud tgbotapi.Update, tokens []string) {
 		return
 	}
 
-	// if there's no view, get one
-	if view.Torrents == nil {
-		if err := view.Update(); err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
-			send("info: "+err.Error(), ud.Message.Chat.ID, false)
-			return
-		}
-	}
-
 	for _, id := range tokens {
 		torrentID, err := strconv.Atoi(id)
 		if err != nil {
@@ -845,6 +844,38 @@ func start(ud tgbotapi.Update, tokens []string) {
 
 		send(fmt.Sprintf("Started: %s", torrent.Name), ud.Message.Chat.ID, false)
 	}
+}
+
+// check takes id[s] of torrent[s] to verify them
+func check(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got at least one argument
+	if len(tokens) == 0 {
+		send("check: needs an argument", ud.Message.Chat.ID, false)
+		return
+	}
+
+	for _, id := range tokens {
+		num, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("check: %s is not a number", id), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		torrent, err := view.GetTorrentByID(num)
+		if err != nil {
+			send("check: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		if err := Client.CheckTorrent(torrent.Hash); err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			send("check: ", ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send(fmt.Sprintf("Verifying: %s", torrent.Name), ud.Message.Chat.ID, false)
+	}
+
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
