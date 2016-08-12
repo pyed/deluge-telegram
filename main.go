@@ -226,11 +226,8 @@ func main() {
 		case "check", "/check", "ck", "/ck":
 			go check(update, tokens[1:])
 
-		// case "stats", "/stats", "sa", "/sa":
-		// 	go stats(update)
-
-		// case "speed", "/speed", "ss", "/ss":
-		// 	go speed(update)
+		case "speed", "/speed", "ss", "/ss":
+			go speed(update)
 
 		// case "count", "/count", "co", "/co":
 		// 	go count(update)
@@ -876,6 +873,37 @@ func check(ud tgbotapi.Update, tokens []string) {
 		send(fmt.Sprintf("Verifying: %s", torrent.Name), ud.Message.Chat.ID, false)
 	}
 
+}
+
+// speed will echo back the current download and upload speeds
+func speed(ud tgbotapi.Update) {
+	// keep track of the returned message ID from 'send()' to edit the message.
+	var msgID int
+	for i := 0; i < duration; i++ {
+		download, upload, err := Client.SpeedRate()
+		if err != nil {
+			log.Print("[ERROR] Deluge: %s", err)
+			continue
+		}
+
+		msg := fmt.Sprintf("↓ %s  ↑ %s", humanize.Bytes(uint64(download)), humanize.Bytes(uint64(upload)))
+
+		// if we haven't send a message, send it and save the message ID to edit it the next iteration
+		if msgID == 0 {
+			msgID = send(msg, ud.Message.Chat.ID, false)
+			time.Sleep(time.Second * interval)
+			continue
+		}
+
+		// we have sent the message, let's update.
+		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, msg)
+		Bot.Send(editConf)
+		time.Sleep(time.Second * interval)
+	}
+
+	// after the 10th iteration, show dashes to indicate that we are done updating.
+	editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, "↓ - B  ↑ - B")
+	Bot.Send(editConf)
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
