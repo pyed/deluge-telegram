@@ -23,10 +23,51 @@ const VERSION = "0.1"
 
 type View struct {
 	Torrents deluge.Torrents
+	Sort     deluge.Sorting
 }
 
 func (v *View) Update() (err error) {
 	v.Torrents, err = Client.GetTorrents()
+
+	switch v.Sort {
+	case deluge.SortName:
+		return // already sorted by name
+	case deluge.SortRevName:
+		v.Torrents.SortName(true)
+	case deluge.SortAge:
+		v.Torrents.SortAge(false)
+	case deluge.SortRevAge:
+		v.Torrents.SortAge(true)
+	case deluge.SortSize:
+		v.Torrents.SortSize(false)
+	case deluge.SortRevSize:
+		v.Torrents.SortSize(true)
+	case deluge.SortProgress:
+		v.Torrents.SortProgress(false)
+	case deluge.SortRevProgress:
+		v.Torrents.SortProgress(true)
+	case deluge.SortDownSpeed:
+		v.Torrents.SortDownSpeed(false)
+	case deluge.SortRevDownSpeed:
+		v.Torrents.SortDownSpeed(true)
+	case deluge.SortUpSpeed:
+		v.Torrents.SortUpSpeed(false)
+	case deluge.SortRevUpSpeed:
+		v.Torrents.SortUpSpeed(true)
+	case deluge.SortDownloaded:
+		v.Torrents.SortDownloaded(false)
+	case deluge.SortRevDownloaded:
+		v.Torrents.SortDownloaded(true)
+	case deluge.SortUploaded:
+		v.Torrents.SortUploaded(false)
+	case deluge.SortRevUploaded:
+		v.Torrents.SortUploaded(true)
+	case deluge.SortRatio:
+		v.Torrents.SortRatio(false)
+	case deluge.SortRevRatio:
+		v.Torrents.SortRatio(true)
+	}
+
 	return
 }
 
@@ -201,8 +242,8 @@ func main() {
 		case "errors", "/errors", "er", "/er":
 			go errors(update)
 
-		// case "sort", "/sort", "so", "/so":
-		// 	go sort(update, tokens[1:])
+		case "sort", "/sort", "so", "/so":
+			go sort(update, tokens[1:])
 
 		case "add", "/add", "ad", "/ad":
 			go add(update, tokens[1:])
@@ -521,6 +562,89 @@ func errors(ud tgbotapi.Update) {
 
 	send(buf.String(), ud.Message.Chat.ID, false)
 
+}
+
+// sort changes torrents sorting
+func sort(ud tgbotapi.Update, tokens []string) {
+	if len(tokens) == 0 {
+		send(`sort takes one of:
+			(*name, age, size, progress, downspeed, upspeed, download, upload, ratio*)
+			optionally start with (*rev*) for reversed order
+			e.g. "*sort rev size*" to get biggest torrents first.`, ud.Message.Chat.ID, true)
+		return
+	}
+
+	var reversed bool
+	if strings.ToLower(tokens[0]) == "rev" {
+		reversed = true
+		tokens = tokens[1:]
+	}
+
+	switch strings.ToLower(tokens[0]) {
+	case "name":
+		if reversed {
+			view.Sort = deluge.SortRevName
+			break
+		}
+		view.Sort = deluge.SortName
+	case "age":
+		if reversed {
+			view.Sort = deluge.SortRevAge
+			break
+		}
+		view.Sort = deluge.SortAge
+	case "size":
+		if reversed {
+			view.Sort = deluge.SortRevSize
+			break
+		}
+		view.Sort = deluge.SortSize
+	case "progress":
+		if reversed {
+			view.Sort = deluge.SortRevProgress
+			break
+		}
+		view.Sort = deluge.SortProgress
+	case "downspeed":
+		if reversed {
+			view.Sort = deluge.SortRevDownSpeed
+			break
+		}
+		view.Sort = deluge.SortDownSpeed
+	case "upspeed":
+		if reversed {
+			view.Sort = deluge.SortRevUpSpeed
+			break
+		}
+		view.Sort = deluge.SortUpSpeed
+	case "download":
+		if reversed {
+			view.Sort = deluge.SortRevDownloaded
+			break
+		}
+		view.Sort = deluge.SortDownloaded
+	case "upload":
+		if reversed {
+			view.Sort = deluge.SortRevUploaded
+			break
+		}
+		view.Sort = deluge.SortUploaded
+	case "ratio":
+		if reversed {
+			view.Sort = deluge.SortRevRatio
+			break
+		}
+		view.Sort = deluge.SortRatio
+	default:
+		send("unkown sorting method", ud.Message.Chat.ID, false)
+		return
+	}
+
+	if reversed {
+		send("sort: reversed "+tokens[0], ud.Message.Chat.ID, false)
+		return
+	}
+	send("sort: "+tokens[0], ud.Message.Chat.ID, false)
 }
 
 // add takes an URL to a .torrent file to add it to transmission
