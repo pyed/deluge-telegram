@@ -32,7 +32,7 @@ func (v *View) GetTorrentByID(id int) (*deluge.Torrent, error) {
 	// if there's no view, get one
 	if view.Torrents == nil {
 		if err := view.Update(); err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
+			log.Printf("[ERROR] Deluge: %s", err)
 			return nil, err
 		}
 	}
@@ -229,11 +229,11 @@ func main() {
 		case "count", "/count", "co", "/co":
 			go count(update)
 
-		// case "del", "/del":
-		// 	go del(update, tokens[1:])
+		case "del", "/del":
+			go del(update, tokens[1:])
 
-		// case "deldata", "/deldata":
-		// 	go deldata(update, tokens[1:])
+		case "deldata", "/deldata":
+			go deldata(update, tokens[1:])
 
 		// case "help", "/help":
 		// 	go send(HELP, update.Message.Chat.ID, true)
@@ -627,7 +627,7 @@ func latest(ud tgbotapi.Update, tokens []string) {
 	}
 
 	if err := view.Update(); err != nil {
-		log.Print("[ERROR] Deluge: %s", err)
+		log.Printf("[ERROR] Deluge: %s", err)
 		send("latest: "+err.Error(), ud.Message.Chat.ID, false)
 		return
 	}
@@ -759,7 +759,7 @@ func stop(ud tgbotapi.Update, tokens []string) {
 		}
 
 		if err := Client.PauseTorrent(torrent.Hash); err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
+			log.Printf("[ERROR] Deluge: %s", err)
 			send("stop: an error occurred while stopping: "+torrent.Name, ud.Message.Chat.ID, false)
 			continue
 		}
@@ -779,7 +779,7 @@ func start(ud tgbotapi.Update, tokens []string) {
 	// if the first argument is 'all' then start all torrents
 	if tokens[0] == "all" {
 		if err := Client.StartAll(); err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
+			log.Printf("[ERROR] Deluge: %s", err)
 			send("start: error occurred while starting some torrents", ud.Message.Chat.ID, false)
 			return
 		}
@@ -832,7 +832,7 @@ func check(ud tgbotapi.Update, tokens []string) {
 		}
 
 		if err := Client.CheckTorrent(torrent.Hash); err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
+			log.Printf("[ERROR] Deluge: %s", err)
 			send("check: ", ud.Message.Chat.ID, false)
 			continue
 		}
@@ -849,7 +849,7 @@ func speed(ud tgbotapi.Update) {
 	for i := 0; i < duration; i++ {
 		download, upload, err := Client.SpeedRate()
 		if err != nil {
-			log.Print("[ERROR] Deluge: %s", err)
+			log.Printf("[ERROR] Deluge: %s", err)
 			continue
 		}
 
@@ -877,7 +877,7 @@ func speed(ud tgbotapi.Update) {
 func count(ud tgbotapi.Update) {
 	state, trackers, err := Client.FilterTree()
 	if err != nil {
-		log.Print("[ERROR] Deluge: %s", err)
+		log.Printf("[ERROR] Deluge: %s", err)
 		send("count: "+err.Error(), ud.Message.Chat.ID, false)
 		return
 	}
@@ -894,6 +894,70 @@ func count(ud tgbotapi.Update) {
 	}
 
 	send(buf.String(), ud.Message.Chat.ID, true)
+}
+
+// del takes an id or more, and delete the corresponding torrent/s
+func del(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got an argument
+	if len(tokens) == 0 {
+		send("del: needs an ID", ud.Message.Chat.ID, false)
+		return
+	}
+
+	// loop over tokens to read each potential id
+	for _, id := range tokens {
+		num, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("del: %s is not an ID", id), ud.Message.Chat.ID, false)
+			return
+		}
+
+		torrent, err := view.GetTorrentByID(num)
+		if err != nil {
+			send("del: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		if err := Client.RemoveTorrent(torrent.Hash, false); err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			send("send: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send("Deleted: "+torrent.Name, ud.Message.Chat.ID, false)
+	}
+}
+
+// deldata takes an id or more, and delete the corresponding torrent/s with their data
+func deldata(ud tgbotapi.Update, tokens []string) {
+	// make sure that we got an argument
+	if len(tokens) == 0 {
+		send("deldata: needs an ID", ud.Message.Chat.ID, false)
+		return
+	}
+
+	// loop over tokens to read each potential id
+	for _, id := range tokens {
+		num, err := strconv.Atoi(id)
+		if err != nil {
+			send(fmt.Sprintf("deldata: %s is not an ID", id), ud.Message.Chat.ID, false)
+			return
+		}
+
+		torrent, err := view.GetTorrentByID(num)
+		if err != nil {
+			send("deldata: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		if err := Client.RemoveTorrent(torrent.Hash, true); err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			send("send: "+err.Error(), ud.Message.Chat.ID, false)
+			continue
+		}
+
+		send("Deleted with data: "+torrent.Name, ud.Message.Chat.ID, false)
+	}
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
