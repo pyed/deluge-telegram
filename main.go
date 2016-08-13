@@ -19,6 +19,8 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
+const VERSION = "0.1"
+
 type View struct {
 	Torrents deluge.Torrents
 }
@@ -238,8 +240,8 @@ func main() {
 		// case "help", "/help":
 		// 	go send(HELP, update.Message.Chat.ID, true)
 
-		// case "version", "/version":
-		// 	go version(update)
+		case "version", "/version":
+			go version(update)
 
 		case "":
 			// might be a file received
@@ -958,6 +960,19 @@ func deldata(ud tgbotapi.Update, tokens []string) {
 
 		send("Deleted with data: "+torrent.Name, ud.Message.Chat.ID, false)
 	}
+}
+
+// version sends deluge/libtorrent and deluge-telegram versions
+func version(ud tgbotapi.Update) {
+	deluge, libtorrent, err := Client.Version()
+	if err != nil {
+		log.Printf("[ERROR] Deluge: %s", err)
+		send("version: "+err.Error(), ud.Message.Chat.ID, false)
+		return
+	}
+
+	send(fmt.Sprintf("Deluge/libtorrent: *%s/%s*\nDeluge-telegram: *%s*",
+		deluge, libtorrent, VERSION), ud.Message.Chat.ID, true)
 }
 
 // send takes a chat id and a message to send, returns the message id of the send message
