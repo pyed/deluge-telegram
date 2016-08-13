@@ -19,7 +19,82 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
-const VERSION = "0.1"
+const (
+	VERSION = "1.0"
+	HELP    = `
+	*list* or *li*
+	Lists all the torrents, takes an optional argument which is a query to list only torrents that has a tracker matches the query, or some of it.
+
+	*head* or *he*
+	Lists the first n number of torrents, n defaults to 5 if no argument is provided.
+
+	*tail* or *ta*
+	Lists the last n number of torrents, n defaults to 5 if no argument is provided.
+
+	*down* or *dl*
+	Lists torrents with the status of Downloading or in the queue to download.
+
+	*seeding* or *sd*
+	Lists torrents with the status of Seeding or in the queue to seed.
+	
+	*paused* or *pa*
+	Lists Paused torrents.
+
+	*checking* or *ch*
+	Lists torrents with the status of Verifying or in the queue to verify.
+	
+	*active* or *ac*
+	Lists torrents that are actively uploading or downloading.
+
+	*errors* or *er*
+	Lists torrents with with errors along with the error message.
+
+	*sort* or *so*
+	Manipulate the sorting of the aforementioned commands, Call it without arguments for more. 
+
+	*add* or *ad*
+	Takes one or many URLs or magnets to add them, You can send a .torrent file via Telegram to add it.
+
+	*search* or *se*
+	Takes a query and lists torrents with matching names.
+
+	*latest* or *la*
+	Lists the newest n torrents, n defaults to 5 if no argument is provided.
+
+	*info* or *in*
+	Takes one or more torrent's IDs to list more info about them.
+
+	*stop* or *sp*
+	Takes one or more torrent's IDs to stop them, or _all_ to stop all torrents.
+
+	*start* or *st*
+	Takes one or more torrent's IDs to start them, or _all_ to start all torrents.
+
+	*check* or *ck*
+	Takes an ID of a torrent to verify.
+
+	*del*
+	Takes one or more torrent's IDs to delete them.
+
+	*deldata*
+	Takes one or more torrent's IDs to delete them and their data.
+
+	*speed* or *ss*
+	Shows the upload and download speeds.
+	
+	*count* or *co*
+	Shows the torrents counts per status.
+
+	*help*
+	Shows this help message.
+
+	*version*
+	Shows version numbers.
+
+	- Prefix commands with '/' if you want to talk to your bot in a group. 
+	- report any issues [here](https://github.com/pyed/deluge-telegram)
+	`
+)
 
 type View struct {
 	Torrents deluge.Torrents
@@ -28,6 +103,15 @@ type View struct {
 
 func (v *View) Update() (err error) {
 	v.Torrents, err = Client.GetTorrents()
+	if err != nil {
+		if strings.Contains(err.Error(), "Not authenticated") {
+			log.Print("[ERROR] Deluge: Not authenticated, Trying to re-authenticate ...")
+			Client.AuthLogin()
+			err = fmt.Errorf("Deluge: needed to re-authenticate, try again.")
+			return
+		}
+
+	}
 
 	switch v.Sort {
 	case deluge.SortName:
@@ -278,8 +362,8 @@ func main() {
 		case "deldata", "/deldata":
 			go deldata(update, tokens[1:])
 
-		// case "help", "/help":
-		// 	go send(HELP, update.Message.Chat.ID, true)
+		case "help", "/help":
+			go send(HELP, update.Message.Chat.ID, true)
 
 		case "version", "/version":
 			go version(update)
@@ -302,7 +386,7 @@ func main() {
 func list(ud tgbotapi.Update, tokens []string) {
 	if err := view.Update(); err != nil {
 		log.Printf("[ERROR] Deluge: %s", err)
-		send("list: %s"+err.Error(), ud.Message.Chat.ID, false)
+		send("list: "+err.Error(), ud.Message.Chat.ID, false)
 		return
 	}
 
@@ -647,7 +731,7 @@ func sort(ud tgbotapi.Update, tokens []string) {
 	send("sort: "+tokens[0], ud.Message.Chat.ID, false)
 }
 
-// add takes an URL to a .torrent file to add it to transmission
+// add takes an URL to a .torrent file to add
 func add(ud tgbotapi.Update, tokens []string) {
 	if len(tokens) == 0 {
 		send("add: needs atleast one URL", ud.Message.Chat.ID, false)
