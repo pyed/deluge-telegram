@@ -11,8 +11,8 @@ type Torrent struct {
 	UploadPayloadRate int    `json:"upload_payload_rate"`
 	// MoveCompletedPath   string  `json:"move_completed_path"`
 	// Private             bool    `json:"private"`
-	TotalPayloadUpload float64 `json:"total_payload_upload"`
-	Paused             bool    `json:"paused"`
+	// TotalPayloadUpload float64 `json:"total_payload_upload"`
+	// Paused             bool    `json:"paused"`
 	// SeedRank            float64 `json:"seed_rank"`
 	// SeedingTime         int     `json:"seeding_time"`
 	// MaxUploadSlots      int     `json:"max_upload_slots"`
@@ -54,7 +54,7 @@ type Torrent struct {
 	// FileProgress        []float64     `json:"file_progress"`
 	// MoveCompleted       bool          `json:"move_completed"`
 	// PieceLength         float64       `json:"piece_length"`
-	// AllTimeDownload     float64       `json:"all_time_download"`
+	AllTimeDownload float64 `json:"all_time_download"`
 	// MoveOnCompletedPath string        `json:"move_on_completed_path"`
 	// NumSeeds            int           `json:"num_seeds"`
 	// Peers               []interface{} `json:"peers"`
@@ -71,12 +71,12 @@ type Torrent struct {
 	// 	Tier         int    `json:"tier"`
 	// 	Updating     bool   `json:"updating"`
 	// } `json:"trackers"`
-	TotalPayloadDownload float64 `json:"total_payload_download"`
+	// TotalPayloadDownload float64 `json:"total_payload_download"`
 	// IsAutoManaged        bool    `json:"is_auto_managed"`
 	// SeedsPeersRatio      float64 `json:"seeds_peers_ratio"`
 	// Queue                int     `json:"queue"`
 	// NumFiles             int     `json:"num_files"`
-	Eta int `json:"eta"`
+	ETA int `json:"eta"`
 	// StopRatio            float64 `json:"stop_ratio"`
 	// IsFinished           bool    `json:"is_finished"`
 }

@@ -62,15 +62,13 @@ func (t byUpSpeed) Len() int           { return len(t) }
 func (t byUpSpeed) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 func (t byUpSpeed) Less(i, j int) bool { return t[i].UploadPayloadRate < t[j].UploadPayloadRate }
 
-func (t byDownloaded) Len() int      { return len(t) }
-func (t byDownloaded) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
-func (t byDownloaded) Less(i, j int) bool {
-	return t[i].TotalPayloadDownload < t[j].TotalPayloadDownload
-}
+func (t byDownloaded) Len() int           { return len(t) }
+func (t byDownloaded) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
+func (t byDownloaded) Less(i, j int) bool { return t[i].AllTimeDownload < t[j].AllTimeDownload }
 
 func (t byUploaded) Len() int           { return len(t) }
 func (t byUploaded) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
-func (t byUploaded) Less(i, j int) bool { return t[i].TotalPayloadUpload < t[j].TotalPayloadUpload }
+func (t byUploaded) Less(i, j int) bool { return t[i].TotalUploaded < t[j].TotalUploaded }
 
 func (t byRatio) Len() int           { return len(t) }
 func (t byRatio) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
