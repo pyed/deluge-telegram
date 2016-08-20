@@ -639,7 +639,7 @@ func errors(ud tgbotapi.Update) {
 	}
 
 	if buf.Len() == 0 {
-		send("No errors torrents", ud.Message.Chat.ID, false)
+		send("No errors", ud.Message.Chat.ID, false)
 		return
 	}
 
@@ -892,8 +892,8 @@ func info(ud tgbotapi.Update, tokens []string) {
 		info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *%d*\nTracker: `%s`",
 			torrentID, torrentName, torrent.State, torrent.Progress,
 			humanize.Bytes(uint64(torrent.DownloadPayloadRate)), humanize.Bytes(uint64(torrent.UploadPayloadRate)),
-			humanize.Bytes(uint64(torrent.TotalPayloadDownload)), humanize.Bytes(uint64(torrent.TotalPayloadUpload)),
-			torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.Eta, torrent.TrackerHost)
+			humanize.Bytes(uint64(torrent.AllTimeDownload)), humanize.Bytes(uint64(torrent.TotalUploaded)),
+			torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.ETA, torrent.TrackerHost)
 
 		// send it
 		msgID := send(info, ud.Message.Chat.ID, true)
@@ -913,8 +913,8 @@ func info(ud tgbotapi.Update, tokens []string) {
 				info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *%d*\nTracker: `%s`",
 					torrentID, torrentName, torrent.State, torrent.Progress,
 					humanize.Bytes(uint64(torrent.DownloadPayloadRate)), humanize.Bytes(uint64(torrent.UploadPayloadRate)),
-					humanize.Bytes(uint64(torrent.TotalPayloadDownload)), humanize.Bytes(uint64(torrent.TotalPayloadUpload)),
-					torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.Eta, torrent.TrackerHost)
+					humanize.Bytes(uint64(torrent.AllTimeDownload)), humanize.Bytes(uint64(torrent.TotalUploaded)),
+					torrent.Ratio, time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.ETA, torrent.TrackerHost)
 
 				// update the message
 				editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
@@ -925,8 +925,8 @@ func info(ud tgbotapi.Update, tokens []string) {
 
 			// at the end write dashes to indicate that we are done being live.
 			info := fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *-*  ↑ *-* \nDL: *%s* UP: *%s* R: *%.3f*\nAdded: *%s*, ETA: *-*\nTracker: `%s`",
-				torrentID, torrentName, torrent.State, torrent.Progress, humanize.Bytes(uint64(torrent.TotalPayloadDownload)),
-				humanize.Bytes(uint64(torrent.TotalPayloadUpload)), torrent.Ratio,
+				torrentID, torrentName, torrent.State, torrent.Progress, humanize.Bytes(uint64(torrent.AllTimeDownload)),
+				humanize.Bytes(uint64(torrent.TotalUploaded)), torrent.Ratio,
 				time.Unix(int64(torrent.TimeAdded), 0).Format(time.Stamp), torrent.TrackerHost)
 
 			editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
