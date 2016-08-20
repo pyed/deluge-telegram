@@ -242,10 +242,7 @@ func init() {
 		log.SetOutput(logf)
 	}
 	// log the flags
-	log.Printf(`[INFO] Token  = %s
-			   Master = %s
-			   URL    = %s
-		   	   PASS   = %s`,
+	log.Printf("[INFO] Settings:\n\tToken = %s\n\tMaster = %s\n\tURL = %s\n\tPASS = %s",
 		BotToken, Master, DelugeURL, Password)
 }
 
