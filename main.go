@@ -610,7 +610,9 @@ func active(ud tgbotapi.Update) {
 	for _, torrent := range view.Torrents {
 		if torrent.DownloadPayloadRate > 0 ||
 			torrent.UploadPayloadRate > 0 {
-			buf.WriteString(fmt.Sprintf("<%d> %s\n", torrent.ID, torrent.Name))
+			buf.WriteString(fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%.3f*\n\n", torrent.ID,
+				mdReplacer.Replace(torrent.Name), torrent.State, torrent.Progress, humanize.Bytes(uint64(torrent.DownloadPayloadRate)),
+				humanize.Bytes(uint64(torrent.UploadPayloadRate)), torrent.Ratio))
 		}
 	}
 
@@ -619,8 +621,46 @@ func active(ud tgbotapi.Update) {
 		return
 	}
 
-	send(buf.String(), ud.Message.Chat.ID, false)
+	msgID := send(buf.String(), ud.Message.Chat.ID, true)
 
+	// keep updating the info for (duration * interval)
+	for i := 0; i < duration; i++ {
+		time.Sleep(time.Second * interval)
+
+		if err := view.Update(); err != nil {
+			log.Printf("[ERROR] Deluge: %s", err)
+			continue // if there's an error, skip to the next intration
+		}
+
+		buf.Reset()
+		for _, torrent := range view.Torrents {
+			if torrent.DownloadPayloadRate > 0 ||
+				torrent.UploadPayloadRate > 0 {
+				buf.WriteString(fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%.3f*\n\n", torrent.ID,
+					mdReplacer.Replace(torrent.Name), torrent.State, torrent.Progress, humanize.Bytes(uint64(torrent.DownloadPayloadRate)),
+					humanize.Bytes(uint64(torrent.UploadPayloadRate)), torrent.Ratio))
+			}
+		}
+
+		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
+		editConf.ParseMode = tgbotapi.ModeMarkdown
+		Bot.Send(editConf)
+	}
+
+	// write dashes to indicate being dead
+	buf.Reset()
+	for _, torrent := range view.Torrents {
+		if torrent.DownloadPayloadRate > 0 ||
+			torrent.UploadPayloadRate > 0 {
+			buf.WriteString(fmt.Sprintf("`<%d>` *%s*\n%s (*%.1f%%*) ↓ *-*  ↑ *-* R: *-*\n\n", torrent.ID,
+				mdReplacer.Replace(torrent.Name), torrent.State, torrent.Progress))
+		}
+
+	}
+
+	editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
+	editConf.ParseMode = tgbotapi.ModeMarkdown
+	Bot.Send(editConf)
 }
 
 // errors will send the names of the torrents with the status 'Seeding'
