@@ -105,10 +105,12 @@ func (v *View) Update() (err error) {
 	v.Torrents, err = Client.GetTorrents()
 	if err != nil {
 		if strings.Contains(err.Error(), "Not authenticated") {
-			log.Print("[ERROR] Deluge: Not authenticated, Trying to re-authenticate ...")
-			Client.AuthLogin()
-			err = fmt.Errorf("Deluge: needed to re-authenticate, try again.")
-			return
+			log.Print("[INFO] Deluge: Session Timeout, Trying to re-authenticate ...")
+			err = Client.AuthLogin()
+			if err != nil {
+				return
+			}
+			return v.Update() // auth success, re-call Update()
 		}
 
 	}
