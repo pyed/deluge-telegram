@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sync/atomic"
+	"time"
 )
 
 // Deluge represents an endpoint for Deluge RPC requests.
@@ -30,6 +31,8 @@ func New(url, password string) (*Deluge, error) {
 		nil,
 		0,
 	}
+
+	d.client.Timeout = time.Duration(time.Second * 30)
 
 	err := d.AuthLogin()
 	if err != nil {
