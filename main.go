@@ -96,6 +96,120 @@ const (
 	`
 )
 
+var (
+	// flags
+	BotToken  string
+	Master    string
+	DelugeURL string
+	Password  string
+	LogFile   string
+
+	// Deluge
+	Client *deluge.Deluge
+
+	// Deluge view
+	view = new(View)
+
+	// Telegram
+	Bot     *tgbotapi.BotAPI
+	Updates <-chan tgbotapi.Update
+
+	// interval in seconds for live updates, affects: "active", "info", "speed", "head", "tail"
+	interval time.Duration = 2
+	// duration controls how many intervals will happen
+	duration = 60
+
+	// since telegram's markdown can't be escaped, we have to replace some chars
+	mdReplacer = strings.NewReplacer("*", "•",
+		"[", "(",
+		"]", ")",
+		"_", "-",
+		"`", "'")
+)
+
+// init flags
+func init() {
+	// define arguments and parse them.
+	flag.StringVar(&BotToken, "token", "", "Telegram bot token, set it via TOKEN=")
+	flag.StringVar(&Master, "master", "", "Your telegram handler, So the bot will only respond to you, set it via MASTER=")
+	flag.StringVar(&DelugeURL, "url", "http://localhost:8112", "Deluge WebUI URL")
+	flag.StringVar(&Password, "password", "", "Deluge WebUI password, set it via PASS=")
+	flag.StringVar(&LogFile, "logfile", "", "Send logs to a file")
+
+	// set the usage message
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, "Usage: TOKEN=<xxx> MASTER=<@tuser> PASS=<pass> deluge-telegram -url=[http://] [-logfile=file]\n\n")
+		flag.PrintDefaults()
+	}
+
+	flag.Parse()
+
+	// if one of token, master, password isn't set, set it to the corrsponding environment variable.
+	if BotToken == "" {
+		BotToken = os.Getenv("TOKEN")
+	}
+	if Master == "" {
+		Master = os.Getenv("MASTER")
+	}
+	if Password == "" {
+		Password = os.Getenv("PASS")
+	}
+
+	// make sure that we have the two madatory arguments: telegram token & master's handler.
+	if BotToken == "" ||
+		Master == "" {
+		fmt.Fprintf(os.Stderr, "Error: Mandatory argument missing! (-token or -master)\n\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// make sure that the handler doesn't contain @
+	Master = strings.Replace(Master, "@", "", -1)
+
+	// if we got a log file, log to it
+	if LogFile != "" {
+		logf, err := os.OpenFile(LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetOutput(logf)
+	}
+	// log the flags
+	log.Printf("[INFO] Settings:\n\tToken = %s\n\tMaster = %s\n\tURL = %s\n\tPASS = %s",
+		BotToken, Master, DelugeURL, Password)
+}
+
+// init deluge
+func init() {
+	var err error
+	Client, err = deluge.New(DelugeURL+"/json", Password)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
+		os.Exit(1)
+	}
+}
+
+// init Telegram
+func init() {
+	var err error
+	Bot, err = tgbotapi.NewBotAPI(BotToken)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
+		os.Exit(1)
+	}
+	log.Printf("[INFO] Authorized: %s", Bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	Updates, err = Bot.GetUpdatesChan(u)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
+		os.Exit(1)
+	}
+}
+
 type View struct {
 	Torrents deluge.Torrents
 	Sort     deluge.Sorting
@@ -172,109 +286,6 @@ func (v *View) GetTorrentByID(id int) (*deluge.Torrent, error) {
 		}
 	}
 	return nil, fmt.Errorf("Can't find a torrent with ID: %d", id)
-}
-
-var (
-	// flags
-	BotToken  string
-	Master    string
-	DelugeURL string
-	Password  string
-	LogFile   string
-
-	// Deluge
-	Client *deluge.Deluge
-
-	// Deluge view
-	view = new(View)
-
-	// Telegram
-	Bot     *tgbotapi.BotAPI
-	Updates <-chan tgbotapi.Update
-
-	// interval in seconds for live updates, affects: "active", "info", "speed", "head", "tail"
-	interval time.Duration = 2
-	// duration controls how many intervals will happen
-	duration = 60
-
-	// since telegram's markdown can't be escaped, we have to replace some chars
-	mdReplacer = strings.NewReplacer("*", "•",
-		"[", "(",
-		"]", ")",
-		"_", "-",
-		"`", "'")
-)
-
-// init flags
-func init() {
-	// define arguments and parse them.
-	flag.StringVar(&BotToken, "token", "", "Telegram bot token")
-	flag.StringVar(&Master, "master", "", "Your telegram handler, So the bot will only respond to you")
-	flag.StringVar(&DelugeURL, "url", "http://localhost:8112", "Deluge WebUI URL")
-	flag.StringVar(&Password, "password", "deluge", "Deluge WebUI password")
-	flag.StringVar(&LogFile, "logfile", "", "Send logs to a file")
-
-	// set the usage message
-	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: deluge-telegram -token=<TOKEN> -master=<@tuser> -url=[http://] -password=[pass]\n\n")
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
-
-	// make sure that we have the two madatory arguments: telegram token & master's handler.
-	if BotToken == "" ||
-		Master == "" {
-		fmt.Fprintf(os.Stderr, "Error: Mandatory argument missing! (-token or -master)\n\n")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	// make sure that the handler doesn't contain @
-	Master = strings.Replace(Master, "@", "", -1)
-
-	// if we got a log file, log to it
-	if LogFile != "" {
-		logf, err := os.OpenFile(LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.SetOutput(logf)
-	}
-	// log the flags
-	log.Printf("[INFO] Settings:\n\tToken = %s\n\tMaster = %s\n\tURL = %s\n\tPASS = %s",
-		BotToken, Master, DelugeURL, Password)
-}
-
-// init deluge
-func init() {
-	var err error
-	Client, err = deluge.New(DelugeURL+"/json", Password)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Deluge: %s\n", err)
-		os.Exit(1)
-	}
-}
-
-// init Telegram
-func init() {
-	var err error
-	Bot, err = tgbotapi.NewBotAPI(BotToken)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
-		os.Exit(1)
-	}
-	log.Printf("[INFO] Authorized: %s", Bot.Self.UserName)
-
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	Updates, err = Bot.GetUpdatesChan(u)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Telegram: %s\n", err)
-		os.Exit(1)
-	}
 }
 
 func main() {
