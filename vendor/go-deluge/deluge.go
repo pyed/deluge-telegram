@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -34,7 +35,7 @@ func New(url, password string) (*Deluge, error) {
 
 	d.client.Timeout = time.Duration(time.Second * 30)
 
-	err := d.AuthLogin()
+	err := d.authLogin()
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +274,7 @@ func (d *Deluge) Version() (string, string, error) {
 }
 
 // AuthLogin gets called via New to authenticate with deluge.
-func (d *Deluge) AuthLogin() error {
+func (d *Deluge) authLogin() error {
 	response, err := d.sendJsonRequest("auth.login", []interface{}{d.password})
 	if err != nil {
 		return err
@@ -335,6 +336,15 @@ func (d *Deluge) sendJsonRequest(method string, params []interface{}) (map[strin
 	}
 
 	if result["error"] != nil {
+		// if the error has "Not authenticated", try to authLogin();
+		if strings.Contains(fmt.Sprintf("%v", result["error"]), "Not authenticated") {
+			if err := d.authLogin(); err != nil {
+				return nil, fmt.Errorf("json error : %v", result["error"])
+			}
+			// if the authentication is success, try again.
+			return d.sendJsonRequest(method, params)
+		}
+
 		return nil, fmt.Errorf("json error : %v", result["error"])
 	}
 
