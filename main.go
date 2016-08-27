@@ -218,15 +218,8 @@ type View struct {
 func (v *View) Update() (err error) {
 	v.Torrents, err = Client.GetTorrents()
 	if err != nil {
-		if strings.Contains(err.Error(), "Not authenticated") {
-			log.Print("[INFO] Deluge: Session Timeout, Trying to re-authenticate ...")
-			err = Client.AuthLogin()
-			if err != nil {
-				return
-			}
-			return v.Update() // auth success, re-call Update()
-		}
-
+		log.Printf("[ERROR] Deluge: %s", err)
+		return err
 	}
 
 	switch v.Sort {
